@@ -185,6 +185,16 @@ function fitFlow() { setFlowZoom(1) }
 window.addEventListener('orientationchange', () => setTimeout(() => focusFlow(), 200))
 
 /* ---------- React component ---------- */
+/* Gán hàm xử lý vào window để HTML onclick (chèn qua innerHTML) có thể gọi được */
+Object.assign(window, {
+  esc, now, fmt, st, log, speak, stopSound, stopMetro, startMetro, setTimer, updateTimer,
+  start, question, choose, openProtocol, enterStep, next, changed, unable, go, home,
+  showModal, render, resume, speakCurrent, saveNote, handover,
+  setMode, listEntries, detail, exportLog, clearLog,
+  timerHTML, visual, src, arrow, node, futureCard,
+  flowHome, flowActive, library, setFlowZoom, flowCenter, fitFlow, focusFlow,
+})
+
 export default function App() {
   useEffect(() => {
     render()

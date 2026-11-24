@@ -1,14 +1,29 @@
 <!doctype html>
 <html lang="vi">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <meta name="theme-color" content="#c51f36" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="stylesheet" href="/src/index.css" />
     <title>SowCuu v1.2 • Flow Canvas</title>
+    <script defer src="%BASE_URL%sowcuu/situations.js"></script>
+    <script defer src="%BASE_URL%sowcuu/app.js"></script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <header>
+      <div class="logo" aria-hidden="true">✚</div>
+      <div class="brand">SowCuu</div>
+      <button id="voice" class="small" aria-label="Bật hoặc tắt giọng đọc">🔇</button>
+      <a class="call" href="tel:115">115</a>
+    </header>
+    <main id="app"></main>
+    <nav class="nav" aria-label="Điều hướng">
+      <button data-tab="home" onclick="go('home')"><b>⌂</b>Trang chủ</button>
+      <button data-tab="library" onclick="go('library')"><b>▤</b>Tra cứu</button>
+      <button data-tab="log" onclick="go('log')"><b>◷</b>Nhật ký</button>
+      <button data-tab="about" onclick="go('about')"><b>ⓘ</b>Policy</button>
+    </nav>
+    <dialog id="modal"></dialog>
   </body>
 </html>

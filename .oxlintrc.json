@@ -1,8 +1,22 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "oxc"],
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  "env": {
+    "browser": true
+  },
+  "overrides": [
+    {
+      "files": [
+        "public/sowcuu/app.js"
+      ],
+      "rules": {
+        "no-func-assign": "off",
+        "no-unused-vars": [
+          "warn",
+          {
+            "varsIgnorePattern": "^(startMetro|saveNote|handover|resume|setMode|detail|exportLog|flowCenter|fitFlow|hypoOutcome|sugarFound|updateGallery8|moveGallery8|openViewer8|nativeFull8|ageMenu9|finishInfant9|savePos10|rescue10|saveOnset11|result11|routeSigns12|selectSlide12|scrollSigns12|toggleSign12|clearSigns12)$"
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -1,16 +1,25 @@
-# React + Vite
+# SowCuu v1.2 · Flow Canvas
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Giao diện tiếng Việt được khôi phục từ `SowCuu_v1.2_Symptom_Slider.html`: luồng đánh giá tuần tự, thanh trượt chọn biểu hiện theo vùng cơ thể, tra cứu, nhật ký phiên và Policy.
 
-Currently, two official plugins are available:
+## Chạy ứng dụng
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```sh
+npm ci
+npm run dev
+```
 
-## React Compiler
+- `npm run lint`: kiểm tra mã nguồn.
+- `npm run build`: tạo bản tĩnh trong `dist/`.
+- `npm run preview`: xem bản build trên máy.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Cấu trúc
 
-## Expanding the Oxlint configuration
+- `index.html`: khung ứng dụng và thanh điều hướng.
+- `src/index.css`: giao diện responsive từ bản tham chiếu.
+- `public/sowcuu/app.js`: tương tác, trạng thái phiên và các màn hình. Giữ dạng script cổ điển để các nút do mẫu HTML tạo ra gọi được hàm xử lý; các lớp mở rộng của bản tham chiếu được nạp theo thứ tự.
+- `public/sowcuu/situations.js`: dữ liệu tra cứu và bộ biến thể QA tổng hợp. Biến thể QA không được hiển thị trong tra cứu và không phải phác đồ y khoa.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Nhật ký chỉ nằm trong phiên trình duyệt; người dùng có thể chủ động xuất tệp. Ảnh minh họa từ Wikimedia cần kết nối mạng, giọng đọc phụ thuộc thiết bị.
+
+**Bản thử nghiệm, chưa thẩm định y khoa.** Không dùng để chẩn đoán hoặc thay thế cấp cứu. Trong tình huống khẩn cấp tại Việt Nam, gọi **115** và làm theo hướng dẫn của tổng đài.

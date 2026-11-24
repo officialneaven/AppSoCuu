@@ -134,12 +134,11 @@ function clearLog() { if (confirm('Xóa nhật ký và kết thúc phiên hiện
 function about() { return `<section class="panel"><div class="eyebrow">SowCuu v1.2 · Flow Canvas</div><h1>Thông tin & nguồn</h1><p>Ứng dụng minh họa luồng sơ cứu, không phải thiết bị y tế được cấp phép. Các hướng dẫn mẫu chưa được chuyên gia địa phương thẩm định. Luôn ưu tiên tổng đài cấp cứu và huấn luyện trực tiếp.</p><p>Hoạt động ngoại tuyến với dữ liệu nhúng. Giọng đọc tiếng Việt tùy hệ điều hành, không bảo đảm có giọng offline. Sơ đồ chỉ là biểu tượng minh họa. Không dùng AI để chẩn đoán hay tự chỉ định thuốc.</p>${Object.keys(sources).map(src).join('')}<div class="source"><a href="https://www.gov.uk/foreign-travel-advice/vietnam/getting-help" target="_blank" rel="noopener">Số cấp cứu tại Việt Nam ↗</a></div></section>` }
 
 function render() {
-  const appEl = document.getElementById('app')
   document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab))
   let h = notice
-  if (S.tab === 'library') { appEl.innerHTML = h + library(); return }
-  if (S.tab === 'log') { appEl.innerHTML = h + logs(); return }
-  if (S.tab === 'about') { appEl.innerHTML = h + about(); return }
+  if (S.tab === 'library') { document.getElementById('app').innerHTML = h + library(); return }
+  if (S.tab === 'log') { document.getElementById('app').innerHTML = h + logs(); return }
+  if (S.tab === 'about') { document.getElementById('app').innerHTML = h + about(); return }
   if (S.view === 'home') {
     h += `<div class="split"><div><section class="panel hero"><div class="eyebrow">Hỗ trợ từng bước</div><h1>Giữ bình tĩnh.<br>Bắt đầu sơ cứu.</h1><p>Không cần biết tên bệnh. Trả lời câu hỏi theo tình trạng bạn quan sát được.</p><button class="primary" onclick="start()">✚ Bắt đầu đánh giá →</button>${S.session ? '<button class="outline small" onclick="resume()">Quay lại phiên đang xử lý</button>' : ''}</section><div class="panel"><div class="tag">Cấp cứu y tế Việt Nam</div><h2>115</h2><p>Gọi cấp cứu khi nạn nhân bất tỉnh, thở bất thường, chảy máu nghiêm trọng hoặc có dấu hiệu nguy hiểm.</p><a class="call" href="tel:115">☎ Gọi 115</a></div></div><div><div class="labelrow"><h3>Chọn tình huống</h3><span>29 nhóm nhanh</span></div><div class="tiles">${tiles.map((t, i) => `<button class="tile" onclick="start(tiles[${i}][1])"><b>${t[0]}</b>${esc(t[1])}<small>${esc(t[2])}</small></button>`).join('')}</div><div class="labelrow"><h3>Thư viện ngoại tuyến</h3></div><button class="entry" onclick="go('library')">1.200 biến thể kiểm thử <small>120 tình huống gốc · 19 nhóm · chưa thẩm định</small></button></div></div>`
   } else if (S.view === 'question') {
@@ -153,7 +152,7 @@ function render() {
   } else if (S.view === 'monitor') {
     h += `<section class="panel"><div class="tag">Theo dõi liên tục</div><h1>Ở cạnh nạn nhân</h1><p>Hoàn thành bước không đồng nghĩa nạn nhân đã an toàn. Tiếp tục theo dõi ý thức, hosts absorbed và làm theo hướng dẫn nhân viên y tế.</p><div class="stack"><button class="danger" onclick="changed()">Tình trạng thay đổi / đánh giá lại</button><button onclick="handover()">Đã bàn giao cho nhân viên y tế</button></div></section>`
   }
-  appEl.innerHTML = h; updateTimer()
+  document.getElementById('app').innerHTML = h; updateTimer()
 }
 function resume() { if (S.node) question('response'); else question('scene') }
 function speakCurrent() { if (!S.voice) { S.voice = true; document.getElementById('voice').textContent = '🔊' } if (S.view === 'protocol') { let s = P[S.protocol].steps[S.step]; speak(s.title + '. ' + s.text) } else if (S.view === 'question') { let q = Q[S.node]; speak(q.title + '. ' + q.desc) } }
@@ -170,12 +169,12 @@ render = function () {
   document.body.classList.toggle('flow-mode', isFlow)
   if (!isFlow) return
   let key = S.view === 'question' ? 'q:' + S.node : S.view === 'protocol' ? 'p:' + S.protocol + ':' + S.step : S.view
-  let old = appEl.querySelector('.notice')
+  let old = document.getElementById('app').querySelector('.notice')
   if (old) old.remove()
-  appEl.querySelectorAll('aside').forEach(a => a.remove())
+  document.getElementById('app').querySelectorAll('aside').forEach(a => a.remove())
   let content = app.innerHTML
   let nodes = S.view === 'home' ? flowHome() : flowActive(content)
-  appEl.innerHTML = `<div class="notice flow-alert">BẢN MÔ PHỎNG · Chưa thẩm định y khoa · Ca thật: gọi 115 ngay</div><div class="flow-toolbar"><div class="flow-heading"><span class="flow-status-dot"></span>Quy trình sơ cứu<small>${esc(S.session?.hint || 'Canvas tương tác · dọc / ngang')}</small></div><button class="flow-tool" aria-label="Thu nhỏ" onclick="setFlowZoom(F.zoom-.1)">−</button><span id="zoomValue" class="flow-zoom">${Math.round(F.zoom * 100)}%</span><button class="flow-tool" aria-label="Phóng to" onclick="setFlowZoom(F.zoom+.1)">+</button><button class="flow-tool" aria-label="Về card đang thực hiện" title="Về bước hiện tại" onclick="flowCenter()">◎</button><button class="flow-tool" aria-label="Khôi phục kích thước" onclick="fitFlow()">↺</button></div><div class="flow-viewport" id="flowViewport" aria-label="Canvas quy trình có thể cuộn"><div class="flow-world" id="flowWorld" style="zoom:${F.zoom}">${nodes}</div></div>`
+  document.getElementById('app').innerHTML = `<div class="notice flow-alert">BẢN MÔ PHỎNG · Chưa thẩm định y khoa · Ca thật: gọi 115 ngay</div><div class="flow-toolbar"><div class="flow-heading"><span class="flow-status-dot"></span>Quy trình sơ cứu<small>${esc(S.session?.hint || 'Canvas tương tác · dọc / ngang')}</small></div><button class="flow-tool" aria-label="Thu nhỏ" onclick="setFlowZoom(F.zoom-.1)">−</button><span id="zoomValue" class="flow-zoom">${Math.round(F.zoom * 100)}%</span><button class="flow-tool" aria-label="Phóng to" onclick="setFlowZoom(F.zoom+.1)">+</button><button class="flow-tool" aria-label="Về card đang thực hiện" title="Về bước hiện tại" onclick="flowCenter()">◎</button><button class="flow-tool" aria-label="Khôi phục kích thước" onclick="fitFlow()">↺</button></div><div class="flow-viewport" id="flowViewport" aria-label="Canvas quy trình có thể cuộn"><div class="flow-world" id="flowWorld" style="zoom:${F.zoom}">${nodes}</div></div>`
   updateTimer()
   if (F.focus || F.lastKey !== key || !saved) { F.focus = false; requestAnimationFrame(() => focusFlow()) } else { let v = document.getElementById('flowViewport'); v.scrollTop = saved.top; v.scrollLeft = saved.left }
   F.lastKey = key

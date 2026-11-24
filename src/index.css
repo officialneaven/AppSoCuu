@@ -15,10 +15,6 @@
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
 body {
   margin: 0;
   background: radial-gradient(ellipse at 80% 0, #ffe8eb 0, transparent 48%), var(--bg);
@@ -953,8 +949,8 @@ header {
   min-width: 57px;
   flex: 0 0 auto;
   min-height: 42px;
-  padding: 6px 8px !important;
-  font-size: 13px !important;
+  padding: 6px 8px;
+  font-size: 13px;
   border: 1px solid #e8c4c9;
   border-radius: 12px;
   background: #fff;
@@ -1779,10 +1775,6 @@ header .call {
   }
 }
 
-.hidden {
-  display: none !important;
-}
-
 /* --- animation keyframes --- */
 
 @keyframes fadeIn {
@@ -1903,4 +1895,8 @@ header .call {
 
 .sym12track {
   scroll-behavior: smooth;
+}
+
+.hidden {
+  display: none !important;
 }

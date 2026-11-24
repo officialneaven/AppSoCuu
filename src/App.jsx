@@ -866,43 +866,43 @@ export default function App() {
       </header>
 
       <main id="app">
-        <nav className="nav" aria-label="Điều hướng">
-          <button data-tab="home" className={state.tab === 'home' ? 'primary' : 'outline'} onClick={() => go('home')}>
-            <b>⌂</b> Trang chủ
-          </button>
-          <button data-tab="library" className={state.tab === 'library' ? 'primary' : 'outline'} onClick={() => go('library')}>
-            <b>▤</b> Tra cứu
-          </button>
-          <button data-tab="log" className={state.tab === 'log' ? 'primary' : 'outline'} onClick={() => go('log')}>
-            <b>◷</b> Nhật ký
-          </button>
-          <button data-tab="about" className={state.tab === 'about' ? 'primary' : 'outline'} onClick={() => go('about')}>
-            <b>ⓘ</b> Policy
-          </button>
-        </nav>
-
-        <dialog id="modal" className="modal" open={!!dialog} onClose={() => setDialog(null)}>
-          {dialog && (
-            <div className="dialog-content">
-              <button className="close-btn outline" onClick={() => setDialog(null)} aria-label="Đóng">
-                ✕
-              </button>
-              {dialog.title && <h2>{esc(dialog.title)}</h2>}
-              <p>Bạn có chắc muốn xác nhận thao tác này?</p>
-              <div className="chips10">
-                <button className="primary" onClick={() => setDialog(null)}>
-                  Xác nhận
-                </button>
-                <button className="outline" onClick={() => setDialog(null)}>
-                  Hủy
-                </button>
-              </div>
-            </div>
-          )}
-        </dialog>
-
         {content}
       </main>
+
+      <nav className="nav" aria-label="Điều hướng">
+        <button data-tab="home" onClick={() => go('home')}>
+          <b>⌂</b> Trang chủ
+        </button>
+        <button data-tab="library" onClick={() => go('library')}>
+          <b>▤</b> Tra cứu
+        </button>
+        <button data-tab="log" onClick={() => go('log')}>
+          <b>◷</b> Nhật ký
+        </button>
+        <button data-tab="about" onClick={() => go('about')}>
+          <b>ⓘ</b> Policy
+        </button>
+      </nav>
+
+      <dialog id="modal" className="modal" open={!!dialog} onClose={() => setDialog(null)}>
+        {dialog && (
+          <div className="dialog-content">
+            <button className="close-btn outline" onClick={() => setDialog(null)} aria-label="Đóng">
+              ✕
+            </button>
+            {dialog.title && <h2>{esc(dialog.title)}</h2>}
+            <p>Bạn có chắc muốn xác nhận thao tác này?</p>
+            <div className="chips10">
+              <button className="primary" onClick={() => setDialog(null)}>
+                Xác nhận
+              </button>
+              <button className="outline" onClick={() => setDialog(null)}>
+                Hủy
+              </button>
+            </div>
+          </div>
+        )}
+      </dialog>
 
       {/* Image viewer (placeholder) */}
       <div

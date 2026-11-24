@@ -88,7 +88,6 @@ const Q = {
 }
 
 /* ---------- state ---------- */
-const app = document.getElementById('app')
 const S = { tab: 'home', view: 'home', node: '', protocol: '', step: 0, session: null, logs: [], voice: false, started: 0, timerStart: 0, timerDuration: 0, metro: null, audio: null, query: '', cat: '', mode: 'base', limit: 30, returnView: null }
 const F = { history: [], zoom: 1, focus: true, lastKey: '', lastTop: 0, lastLeft: 0 }
 
@@ -172,7 +171,7 @@ render = function () {
   let old = document.getElementById('app').querySelector('.notice')
   if (old) old.remove()
   document.getElementById('app').querySelectorAll('aside').forEach(a => a.remove())
-  let content = app.innerHTML
+  let content = document.getElementById('app').innerHTML
   let nodes = S.view === 'home' ? flowHome() : flowActive(content)
   document.getElementById('app').innerHTML = `<div class="notice flow-alert">BẢN MÔ PHỎNG · Chưa thẩm định y khoa · Ca thật: gọi 115 ngay</div><div class="flow-toolbar"><div class="flow-heading"><span class="flow-status-dot"></span>Quy trình sơ cứu<small>${esc(S.session?.hint || 'Canvas tương tác · dọc / ngang')}</small></div><button class="flow-tool" aria-label="Thu nhỏ" onclick="setFlowZoom(F.zoom-.1)">−</button><span id="zoomValue" class="flow-zoom">${Math.round(F.zoom * 100)}%</span><button class="flow-tool" aria-label="Phóng to" onclick="setFlowZoom(F.zoom+.1)">+</button><button class="flow-tool" aria-label="Về card đang thực hiện" title="Về bước hiện tại" onclick="flowCenter()">◎</button><button class="flow-tool" aria-label="Khôi phục kích thước" onclick="fitFlow()">↺</button></div><div class="flow-viewport" id="flowViewport" aria-label="Canvas quy trình có thể cuộn"><div class="flow-world" id="flowWorld" style="zoom:${F.zoom}">${nodes}</div></div>`
   updateTimer()

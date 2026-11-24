@@ -1,932 +1,219 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 
-/* ==================== DATA (ported from HTML dataset) ==================== */
+/* ---------- helpers ---------- */
+const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const now = () => new Date().toLocaleTimeString('vi-VN', { hour12: false })
+const fmt = n => String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0')
+const notice = '<div class="notice">BẢN THỬ NGHIỆM • Chưa được bác sĩ thẩm định. Không chẩn đoán bệnh. Ca khẩn cấp: gọi 115 ngay và làm theo tổng đài.</div>'
+const callout = '<div class="warning">Nguy kịch: nhờ người khác gọi 115 ngay, đồng thời thực hiện sơ cứu.</div>'
 
-const signs12 = [
-  ['Da', 'layers', [
-    ['Da tái nhợt / xám', 'p:shock', 1],
-    ['Da lạnh, ẩm, vã mồ hôi', 'sugar_history', 1],
-    ['Da rất nóng', 'heat_alert', 1],
-    ['Da đỏ, nóng', 'heat_alert', 1],
-    ['Nổi mề đay / ban ngứa', 'allergy_obs', 1],
-    ['Da tím tái', 'awake_breath', 2],
-    ['Phồng rộp / bóng nước', 'p:burn', 1],
-    ['Bầm tím', 'injury', 1],
-    ['Vết rách đang chảy máu', 'injury', 1],
-    ['Máu chảy ồ ạt / phun thành tia', 'p:bleed', 2],
-  ]],
-  ['Mắt', 'eye', [
-    ['Đỏ mắt', 'eye_kind', 1],
-    ['Chảy nước mắt', 'eye_kind', 1],
-    ['Cộm / có dị vật', 'eye_kind', 1],
-    ['Đau mắt', 'eye_kind', 1],
-    ['Sưng quanh mắt', 'eye_kind', 1],
-    ['Nhìn mờ đột ngột / mất thị lực', 'p:stroke', 2],
-    ['Nhìn đôi đột ngột', 'p:stroke', 2],
-    ['Hai đồng tử khác kích thước mới xuất hiện', 'p:unknown', 2],
-    ['Hóa chất bắn vào mắt (không có vật xuyên)', 'p:chemical_eye', 2],
-    ['Vật cắm xuyên mắt', 'p:eye_pierced', 2],
-  ]],
-  ['Mũi', 'wind', [
-    ['Chảy máu mũi', 'nose_check12', 1],
-    ['Máu mũi chảy rất nhiều', 'nose_check12', 2],
-    ['Nghẹt mũi', '', 0],
-    ['Chảy nước mũi', '', 0],
-    ['Hắt hơi liên tục', 'allergy_obs', 1],
-    ['Mũi sưng', 'injury', 1],
-    ['Mũi biến dạng sau va đập', 'p:head', 1],
-    ['Đau mũi sau va đập', 'injury', 1],
-    ['Dịch trong chảy từ mũi sau đập đầu', 'p:head', 2],
-    ['Có muội đen quanh mũi sau cháy', 'p:smoke10', 2],
-  ]],
-  ['Miệng', 'mouth', [
-    ['Đột ngột méo miệng', 'p:stroke', 2],
-    ['Đột ngột không nói được / nói đớ', 'p:stroke', 2],
-    ['Môi hoặc lưỡi tím', 'awake_breath', 2],
-    ['Lưỡi / họng sưng nhanh', 'p:anaphylaxis', 2],
-    ['Môi sưng', 'allergy_obs', 1],
-    ['Khó nuốt', 'swallow_check12', 1],
-    ['Chảy nước dãi bất thường', 'swallow_check12', 1],
-    ['Ho sặc, không lấy được hơi khi ăn', 'choke_severity', 2],
-    ['Máu chảy trong miệng sau chấn thương', 'injury', 1],
-    ['Miệng khô, rất khát', 'context', 1],
-  ]],
-  ['Chân', 'leg', [
-    ['Đột ngột yếu / tê một bên chân', 'p:stroke', 2],
-    ['Đột ngột mất thăng bằng', 'p:stroke', 2],
-    ['Đau chân', 'injury', 1],
-    ['Sưng chân', '', 0],
-    ['Bầm tím chân', 'injury', 1],
-    ['Chuột rút', 'heat_alert', 1],
-    ['Chân biến dạng sau tai nạn', 'p:fracture', 1],
-    ['Không cử động được sau chấn thương', 'injury', 1],
-    ['Bàn chân đột ngột lạnh, tái, đau', 'p:unknown', 2],
-    ['Máu chảy ồ ạt ở chân', 'p:bleed', 2],
-  ]],
-]
-
-const signsIndex12 = Object.fromEntries(
-  signs12.flatMap((g, gi) => g[2].map((x, i) => [`${gi}-${i}`, { region: g[0], label: x[0], target: x[1], level: x[2] }]))
-)
-
-const labels12 = {
-  'p:bleed': 'Cầm máu ngay',
-  awake_breath: 'Kiểm tra lại hô hấp',
-  'p:anaphylaxis': 'Xử trí nghi phản vệ',
-  choke_severity: 'Kiểm tra tắc đường thở',
-  'p:stroke': 'Xử trí nghi đột quỵ',
-  'p:chemical_eye': 'Xử trí hóa chất vào mắt',
-  'p:eye_pierced': 'Bảo vệ mắt bị xuyên',
-  'p:head': 'Đánh giá chấn thương đầu',
-  'p:smoke10': 'Xử trí hít khói',
-  'p:unknown': 'Đánh giá khẩn cấp chưa rõ nguyên nhân',
-  'p:amputation': 'Xử trí đứt lìa chi',
-  nose_check12: 'Đánh giá chảy máu mũi',
-  sugar_history: 'Kiểm tra dấu hiệu hạ đường',
-  heat_alert: 'Kiểm tra tiếp xúc nhiệt',
-  allergy_obs: 'Kiểm tra dấu hiệu dị ứng',
-  injury: 'Đánh giá chấn thương',
-  eye_kind: 'Đánh giá tổn thương mắt',
-  'p:burn': 'Đánh giá bỏng',
-  'p:fracture': 'Đánh giá nghi gãy xương',
-  'p:shock': 'Đánh giá dấu hiệu choáng',
-  swallow_check12: 'Kiểm tra khó nuốt',
-  context: 'Hỏi thêm hoàn cảnh',
+/* ---------- data ---------- */
+const sources = {
+  basic: ['Red Cross · Đánh giá sơ cứu', 'https://www.redcross.org/take-a-class/first-aid/performing-first-aid/first-aid-steps'],
+  cpr: ['Red Cross · CPR người lớn', 'https://www.redcross.org/take-a-class/cpr/performing-cpr/hands-only-cpr'],
+  uncon: ['Red Cross · Bất tỉnh còn thở', 'https://www.redcross.org/take-a-class/resources/learn-first-aid/unresponsive-and-breathing-person'],
+  bleed: ['Red Cross · Chảy máu nghiêm trọng', 'https://www.redcross.org/take-a-class/resources/learn-first-aid/bleeding-life-threatening-external'],
+  stroke: ['NHS · Dấu hiệu đột quỵ', 'https://www.nhs.uk/conditions/stroke/symptoms/'],
+  seizure: ['NHS · Co giật', 'https://www.nhs.uk/symptoms/what-to-do-if-someone-has-a-seizure-fit/'],
+  burn: ['NHS · Bỏng nhiệt', 'https://www.nhs.uk/conditions/burns-and-scalds/'],
+  poison: ['NHS · Ngộ độc', 'https://www.nhs.uk/conditions/poisoning/'],
+  aha: ['AHA / Red Cross · Sơ cứu 2024', 'https://cpr.heart.org/en/resuscitation-science/2024-first-aid-guidelines/'],
+  choke: ['Red Cross · Hóc dị vật', 'https://www.redcross.org/take-a-class/resources/learn-first-aid/adult-child-choking'],
+  bls25: ['AHA 2025 · Hồi sức và hóc dị vật người lớn', 'https://cpr.heart.org/en/resuscitation-science/cpr-and-ecc-guidelines/adult-basic-life-support/'],
+  ped25: ['AHA/AAP 2025 · Hồi sức và hóc dị vật trẻ em', 'https://cpr.heart.org/en/resuscitation-science/cpr-and-ecc-guidelines/pediatric-basic-life-support/'],
+  strokevn: ['Bệnh viện Bạch Mai · Sơ cứu đột quỵ', 'https://bachmai.gov.vn/bai-viet/so-cuu-dot-quy-tai-nha-nhung-thao-tac-%E2%80%9Csong-con%E2%80%9D-ban-can-biet?id=66dbd998-49e4-4350-b1c7-042985aa42e0'],
+  glucose: ['CDC · Xử trí hạ đường huyết', 'https://www.cdc.gov/diabetes/treatment/treatment-low-blood-sugar-hypoglycemia.html'],
+  heat: ['CDC · Bệnh do nhiệt', 'https://www.cdc.gov/niosh/heat-stress/about/illnesses.html'],
+  rcguide: ['Red Cross · Hướng dẫn sơ cứu', 'https://www.redcross.org/take-a-class/resources/guidelines'],
+  allergy: ['Red Cross · Phản vệ', 'https://www.redcross.org/take-a-class/resources/learn-first-aid/allergic-reaction-anaphylaxis'],
+  nose: ['Red Cross · Chảy máu mũi', 'https://www.redcross.org/take-a-class/resources/learn-first-aid/nosebleeds'],
+  special25: ['AHA 2025 · Tình huống hồi sức đặc biệt', 'https://cpr.heart.org/en/resuscitation-science/cpr-and-ecc-guidelines/adult-and-pediatric-special-circumstances-of-resuscitation/'],
 }
-
-const Q = {
-  scene: {
-    title: 'Đến gần nạn nhân có an toàn không?',
-    desc: 'Quan sát xe cộ, điện, lửa, nước sâu, khí độc.',
-    options: [['An toàn', 'response'], ['Nguy hiểm / không chắc', 'unsafe']],
-  },
-  response: {
-    title: 'Nạn nhân có phản ứng không?',
-    desc: 'Gọi to, chạm nhẹ vai (bé dưới 1 tuổi: lòng bàn chân). Mở mắt, nhìn hoặc cử động có chủ đích là có phản ứng, dù không nói được. Máu chảy ồ ạt: ép ngay.',
-    options: [['Có phản ứng', 'awake_breath'], ['Không phản ứng / không rõ', 'breath'], ['Máu chảy ồ ạt', 'p:bleed']],
-  },
-  awake_breath: {
-    title: 'Nạn nhân thở thế nào?',
-    desc: 'Quan sát ngực và nhịp thở. Không nói được chưa chắc là nghẹt thở.',
-    options: [['Thở bình thường', 'breathawake'], ['Khó thở / nghẹn / tím môi', 'breath_cause'], ['Mất phản ứng / thở ngáp / không chắc', 'breath']],
-  },
-  breathawake: {
-    title: 'Dấu hiệu nào nổi bật nhất?',
-    desc: 'Chọn dấu hiệu đang thấy. Nếu máu chảy ồ ạt, ép ngay.',
-    options: [
-      ['Đột ngột khó nói, méo mặt, yếu một bên hoặc mất thăng bằng / nhìn bất thường', 'p:stroke'],
-      ['Co giật, đau ngực, chảy máu hoặc lú lẫn', 'urgent9'],
-      ['Dấu hiệu khác', 'context'],
-    ],
-  },
-  breath_cause: {
-    title: 'Khó thở bắt đầu khi nào?',
-    desc: 'Nếu thở rất khó hoặc tím môi: nhờ gọi 115 ngay. Không ép bụng chỉ vì không nói được.',
-    options: [
-      ['Vừa hóc, sặc hoặc có vật mắc', 'choke_severity'],
-      ['Sưng môi / lưỡi / họng hoặc choáng sau dị ứng', 'p:anaphylaxis'],
-      ['Không do hóc hoặc dị ứng / chưa rõ', 'breath_other7'],
-    ],
-  },
-  breath_other7: {
-    title: 'Có dấu hiệu nào kèm theo?',
-    desc: 'Khó thở nặng cần cấp cứu. Nếu mất phản ứng, chọn Tình trạng đổi.',
-    options: [
-      ['Khò khè, giống cơn hen trước', 'p:asthma'],
-      ['Va đập ngực, khói / khí độc hoặc thuốc', 'breath_other_detail7'],
-      ['Đau ngực hoặc không rõ', 'p:chest'],
-    ],
-  },
-  choke_severity: {
-    title: 'Có dấu hiệu vật mắc làm cản luồng khí không?',
-    desc: 'Hóc dị vật thường xảy ra khi ăn hoặc đưa vật vào miệng, kèm ho sặc, ho yếu, thở rít hoặc không đưa được không khí vào. Không nói được đơn độc không đủ để kết luận hóc.',
-    options: [
-      ['Có dấu hiệu hóc nhưng vẫn ho mạnh, vẫn lấy được hơi', 'p:choke_mild'],
-      ['Có dấu hiệu hóc và ho rất yếu/không ho được, không lấy được hơi hoặc tím tái', 'choke_age'],
-      ['Vẫn thở đều nhưng đột ngột không nói được / nói đớ', 'p:stroke'],
-      ['Đã mất phản ứng', 'breath'],
-      ['Dị vật đã ra, thở bình thường', 'p:choke_clear'],
-      ['Không chắc có hóc, đang khó thở', 'p:chest'],
-    ],
-  },
-  urgent9: {
-    title: 'Dấu hiệu nào đang có?',
-    desc: 'Nếu máu chảy ồ ạt, ép ngay.',
-    options: [
-      ['Máu chảy ồ ạt', 'p:bleed'],
-      ['Đau ngực mới xuất hiện / dữ dội', 'p:chest'],
-      ['Co giật hoặc lú lẫn', 'neuro_short9'],
-    ],
-    critical: true,
-  },
-  neuro_short9: {
-    title: 'Nạn nhân đang thế nào?',
-    desc: 'Nếu lú lẫn mới xuất hiện, cần trợ giúp khẩn cấp.',
-    options: [
-      ['Đang co giật', 'p:seizure'],
-      ['Lú lẫn / rất buồn ngủ', 'altered_context'],
-      ['Đã ngất và tỉnh lại', 'faint_flags'],
-    ],
-    critical: true,
-  },
-  context: {
-    title: 'Hoàn cảnh',
-    desc: 'Mô tả ngắn gọn điều gì đã xảy ra.',
-    options: [
-      ['Bệnh nền / thuốc / dị ứng', 'medical'],
-      ['Tai nạn, tiếp xúc môi trường hoặc chất lạ', 'exposure'],
-      ['Bệnh nền, triệu chứng khác hoặc chưa rõ', 'food'],
-    ],
-  },
-  medical: {
-    title: 'Bệnh nền / thuốc',
-    desc: 'Nạn nhân có bệnh nền, dùng thuốc hoặc dị ứng không?',
-    options: [['Hen, dị ứng hoặc co giật', 'allergy_obs'], ['Không rõ', 'p:unknown']],
-  },
-  exposure: {
-    title: 'Tiếp xúc môi trường',
-    desc: 'Nóng, lạnh, điện, nước, hóa chất, thuốc, động vật.',
-    options: [['Điện, nước, nóng hoặc lạnh', 'heat_alert'], ['Hóa chất, thuốc, khói khí', 'toxin_kind'], ['Động vật, côn trùng hoặc không rõ', 'bite_kind']],
-  },
-  food: {
-    title: 'Ăn uống / hóc',
-    desc: 'Nạn nhân vừa ăn, hóc hoặc nuốt chất lạ không?',
-    options: [['Hóc, dị ứng hoặc nuốt chất lạ', 'choke_severity'], ['Run đói / đau bụng, nôn', 'p:unknown']],
-  },
-  sugar_history: {
-    title: 'Tiểu đường / hạ đường huyết',
-    desc: 'Nạn nhân có tiểu đường, dùng thuốc hạ đường hoặc dấu hiệu run, đói, vã mồ hôi không?',
-    options: [
-      ['Đo thấp hoặc có tiểu đường/dùng thuốc hạ đường kèm run, đói, vã mồ hôi', 'sugar_safe'],
-      ['Đột ngột khó nói, méo mặt, yếu một bên hoặc không hiểu lời', 'p:stroke'],
-      ['Không rõ nguyên nhân', 'p:unknown'],
-    ],
-  },
-  sugar_safe: {
-    title: 'T tỉnh hoàn toàn và tự nuốt an toàn không?',
-    desc: 'Không cho uống thử để kiểm tra.',
-    options: [
-      ['Có, là người lớn, tự nuốt an toàn', 'sugar_items'],
-      ['Lơ mơ, khó nuốt, co giật hoặc không chắc', 'p:hypo_severe'],
-      ['Trẻ em tỉnh và tự nuốt được', 'p:hypo_child'],
-      ['Có dấu hiệu thần kinh đột ngột như trên', 'p:stroke'],
-    ],
-  },
-  sugar_items: {
-    title: 'Nguồn đường nhanh',
-    desc: 'Chỉ dùng một nguồn, cho người lớn tỉnh hoàn toàn và nuốt an toàn.',
-    options: [
-      ['Viên hoặc gel glucose có nhãn', 'p:hypo_awake'],
-      ['Nước trái cây / nước ngọt có đường / đường cát hoặc mật ong', 'sugar_drink7'],
-      ['Không có nguồn đường nhanh', 'p:hypo_no_supply'],
-    ],
-  },
-  sugar_drink7: {
-    title: 'Bạn tìm được nguồn đường nào?',
-    desc: 'Chỉ dùng một nguồn, cho người lớn tỉnh hoàn toàn và nuốt an toàn.',
-    options: [
-      ['Nước trái cây / nước ngọt có đường', 'p:hypo_awake'],
-      ['Đường cát hoặc mật ong', 'p:hypo_awake'],
-      ['Không có', 'p:hypo_no_supply'],
-    ],
-  },
-  heat_alert: {
-    title: 'Nóng / sốc nhiệt',
-    desc: 'Nạn nhân có dấu hiệu bất thường sau khi ở nơi nóng không?',
-    options: [
-      ['Vẫn có phản ứng nhưng lú lẫn, nói bất thường hoặc rất nóng và bất thường', 'p:heatstroke'],
-      ['Tỉnh hoàn toàn, mệt, chóng mặt, ra nhiều mồ hôi', 'p:heat_exhaust'],
-      ['Không phản ứng / thở bất thường', 'breath'],
-      ['Đang co giật sau tiếp xúc nóng', 'p:heatstroke'],
-    ],
-  },
-  altered_context: {
-    title: 'Lú lẫn / buồn ngủ',
-    desc: 'Nutan trở nên lú lẫn hoặc rất buồn ngủ trong hoàn cảnh nào?',
-    options: [
-      ['Sau ở nơi nóng hoặc vận động trong nóng', 'p:heatstroke'],
-      ['Có tiểu đường, đường huyết thấp hoặc dùng thuốc hạ đường', 'p:hypo_severe'],
-      ['Sau chấn thương đầu', 'p:head'],
-      ['Trong phòng kín có bếp than, máy phát, khói', 'p:co_poison'],
-      ['Nghi dùng quá liều thuốc', 'toxin_kind'],
-      ['Đột ngột khó nói, méo mặt, yếu một bên hoặc không hiểu lời', 'p:stroke'],
-      ['Không rõ nguyên nhân', 'p:unknown'],
-    ],
-    critical: true,
-  },
-  breath_other_detail7: {
-    title: 'Hoàn cảnh khó thở',
-    desc: 'Đau ngực, khó thở nặng hoặc không rõ nguyên nhân: cần đánh giá khẩn cấp.',
-    options: [
-      ['Va đập ngực', 'p:chest_trauma'],
-      ['Khói, khí độc hoặc thuốc', 'toxin_kind'],
-      ['Đau ngực / không rõ nguyên nhân', 'p:chest'],
-    ],
-    critical: true,
-  },
-  nose_check12: {
-    title: 'Chảy máu mũi sau chấn thương đầu không?',
-    desc: 'Nếu chảy nhiều, choáng hoặc khó thở: nhờ gọi 115 ngay.',
-    options: [
-      ['Có va đập đầu / dịch trong chảy từ mũi', 'p:head'],
-      ['Không, nạn nhân tỉnh và thở bình thường', 'p:nosebleed'],
-      ['Không rõ / nạn nhân yếu, lơ mơ', 'p:unknown'],
-    ],
-  },
-  swallow_check12: {
-    title: 'Khó nuốt xuất hiện cùng dấu hiệu nào?',
-    desc: 'Không thử nuốt bằng nước hoặc thức ăn.',
-    options: [
-      ['Đột ngột khó nói, méo mặt hoặc yếu một bên', 'p:stroke'],
-      ['Sưng lưỡi / họng, khó thở hoặc nghi hóc', 'breath_cause'],
-      ['Không rõ / không có dấu hiệu trên', 'p:unknown'],
-    ],
-  },
-  profile_age: {
-    title: 'Nạn nhân khoảng bao nhiêu tuổi?',
-    desc: 'Ước lượng bằng quan sát hoặc hỏi người đi cùng. Không cần biết tuổi chính xác.',
-    options: [
-      ['Dưới 18 tuổi', 'profile_young'],
-      ['Từ 18 tuổi trở lên', 'profile_adult'],
-      ['Không rõ', 'profile:unknown'],
-    ],
-  },
-  profile_young: {
-    title: 'Nạn nhân thuộc nhóm tuổi nào?',
-    desc: 'Chọn theo tuổi ước lượng.',
-    options: [
-      ['Trẻ sơ sinh / nhũ nhi (dưới 1 tuổi)', 'profile:infant'],
-      ['Trẻ em / nhi đồng (1–12 tuổi)', 'profile:child'],
-      ['Thanh thiếu niên (13–17 tuổi)', 'profile:teen'],
-    ],
-  },
-  profile_adult: {
-    title: 'Nạn nhân thuộc nhóm tuổi nào?',
-    desc: 'Các mốc này dùng để phân loại thông tin, không thay thế ngưỡng kỹ thuật y khoa.',
-    options: [
-      ['Trưởng thành (18–39 tuổi)', 'profile:adult'],
-      ['Trung niên (40–59 tuổi)', 'profile:middle'],
-      ['Lớn tuổi (từ 60 tuổi)', 'profile:older'],
-    ],
-  },
-}
-
+const st = (title, text, opts = {}) => ({ title, text, ...opts })
 const P = {
-  bleed: {
-    title: 'Cầm máu',
-    steps: [
-      {
-        text: 'Ép mạnh, liên tục lên vết thương bằng gạc hoặc vải sạch.',
-        continuous: true,
-        warning: 'Có vật cắm: không rút, ép xung quanh vật.',
-      },
-    ],
-  },
-  stroke: {
-    title: 'Nghi đột quỵ / tai biến mạch máu não',
-    steps: [
-      {
-        text: 'Cho nghỉ an toàn, ghi giờ và nhờ gọi cấp cứu.',
-        note: true,
-        warning: 'Không chích máu ngón tay/dái tai, không cạo gió, không cho ăn uống.',
-      },
-      { text: 'Bảo vệ đường thở, theo dõi', continuous: true },
-    ],
-  },
-  chest: {
-    title: 'Đau ngực',
-    steps: [{ text: 'Cho nghỉ ở tư thế dễ thở', continuous: true }],
-  },
-  anaphylaxis: {
-    title: 'Phản vệ',
-    steps: [{ text: 'Hỗ trợ dùng bút adrenaline đã kê ngay', continuous: true }],
-  },
-  seizure: {
-    title: 'Co giật',
-    steps: [
-      { text: 'Đặt nằm nghiêng, bảo vệ đầu, không cho bất cứ gì vào miệng' },
-      { text: 'Theo dõi sau cơn, gọi 115 nếu cơn > 5 phút hoặc lần đầu', continuous: true },
-    ],
-  },
-  heatstroke: {
-    title: 'Sốc nhiệt',
-    steps: [
-      {
-        text: 'Đưa ra khỏi nóng, làm mát bằng nước lạnh hoặc khăn lạnh, quạt liên tục.',
-        continuous: true,
-        warning: 'Không cho uống nếu ý thức bất thường.',
-      },
-    ],
-  },
-  hypo_severe: {
-    title: 'Hạ đường nặng',
-    steps: [{ text: 'Không cho ăn uống; gọi 115 ngay', continuous: true }],
-  },
-  unknown: {
-    title: 'Không rõ nguyên nhân',
-    steps: [{ text: 'Giữ nạn nhân an toàn và tìm trợ giúp', continuous: true }],
-  },
-  cpr: {
-    title: 'Hồi sức tim phổi (CPR)',
-    steps: [{ text: 'Ép ngực 100–120 lần/phút, gọi 115, lấy AED', continuous: true, metro: true }],
-  },
-  asthma: {
-    title: 'Hen suyễn',
-    steps: [{ text: 'Dùng máy hít bronchodilator nếu có, nghỉ ngơi, gọi 115 nếu không đỡ', continuous: true }],
-  },
-  asphyxia: {
-    title: 'Ngạt thở',
-    steps: [{ text: 'Đưa ra ngoài không khí trong lành, gọi 115', continuous: true }],
-  },
-  poison: {
-    title: 'Ngộ độc',
-    steps: [{ text: 'Không tự provocar nôn, gọi trung tâm chống độc hoặc 115', continuous: true }],
-  },
-  burn: {
-    title: 'Bỏng',
-    steps: [{ text: 'Làm mát vết bỏng dưới nước lạnh, không đính băng chặt', continuous: true }],
-  },
-  fracture: {
-    title: 'Gãy xương',
-    steps: [{ text: 'Di cố định vết thương, không di chuyển nếu không cần thiết', continuous: true }],
-  },
-  shock: {
-    title: 'Choáng',
-    steps: [{ text: 'Đặt nằm nghiêng, giữ ấm, gọi 115', continuous: true }],
-  },
-  nosebleed: {
-    title: 'Chảy máu mũi',
-    steps: [{ text: 'Nằm srä, nhấn kéo mũi, chườm lạnh', continuous: true }],
-  },
-  heat_exhaust: {
-    title: 'Kiệt sức do nóng',
-    steps: [{ text: 'Di chuyển vào nơi mát, uống nước, làm mát cơ thể', continuous: true }],
-  },
-  co_poison: {
-    title: 'Nồng độ CO',
-    steps: [{ text: 'Đưa ra ngoài không khí trong lành ngay, gọi 115', continuous: true }],
-  },
-  toxin_kind: {
-    title: 'Chất độc',
-    steps: [{ text: 'Xác định chất độc, gọi trung tâm chống độc', continuous: true }],
-  },
-  bite_kind: {
-    title: 'Côn trùng / động vật cắn',
-    steps: [{ text: 'Rửa vết cắn, theo dõi dị ứng, gọi 115 nếu nặng', continuous: true }],
-  },
-  eye_pierced: {
-    title: 'Mắt bị xuyên',
-    steps: [{ text: 'Không rút vật, bảo vệ mắt, gọi 115', continuous: true }],
-  },
-  chemical_eye: {
-    title: 'Hóa chất vào mắt',
-    steps: [{ text: 'Rửa mắt bằng nước sạch ít nhất 15 phút, gọi 115', continuous: true }],
-  },
-  head: {
-    title: 'Chấn thương đầu',
-    steps: [{ text: 'Giữ im lưng, gọi 115, theo dõi ý thức', continuous: true }],
-  },
-  amputation: { title: 'Đứt lìa chi', steps: [{ text: 'Ép mạnh, gói phần đứt lìa, gọi 115', continuous: true }] },
+  cpr: { title: 'Nghi ngừng tuần hoàn · người lớn', source: 'cpr', critical: true, steps: [
+    st('Ép tim ngay', 'Nếu người lớn không đáp ứng và không thở bình thường (kể cả thở ngáp), gọi 115 bằng loa ngoài, nhờ lấy AED. Đặt nằm ngửa trên mặt phẳng cứng. Đặt gót bàn tay giữa ngực, tay kia chồng lên. Ép sâu khoảng 5–6 cm, 100–120 lần/phút, nhả ngực hoàn toàn sau mỗi lần. Không dừng để bấm nút.', { visual: 'cpr', continuous: true, metro: true, warning: 'Nếu trẻ em, đuối nước hoặc nghi ngạt, cần hướng dẫn thổi ngạt/CPR phù hợp từ tổng đài; không áp dụng máy móc CPR chỉ ép tim.' }),
+    st('AED đã đến', 'Bật AED, làm theo lời máy. Không chạm nạn nhân khi máy phân tích hoặc sốc. Tiếp tục CPR ngay khi máy yêu cầu.', { continuous: true }),
+  ]},
+  uncon: { title: 'Bất tỉnh nhưng còn thở bình thường', source: 'uncon', critical: true, steps: [
+    st('Gọi cấp cứu và bảo vệ đường thở', 'Gọi 115 ngay. Nếu không nghi chấn thương cột sống, đặt nạn nhân nằm nghiêng an toàn. Nếu nghi chấn thương, hạn chế di chuyển trừ khi cần bảo vệ đường thở hoặc tránh nguy hiểm; làm theo tổng đài.', { visual: 'side' }),
+    st('Theo dõi liên tục', 'Ở cạnh nạn nhân, kiểm tra hosts absorbed liên tục. Không cho ăn uống. Nếu ngừng thở bình thường hoặc chỉ thở ngáp, chuyển sang nhánh ngừng tuần hoàn ngay.', { continuous: true }),
+  ]},
+  bleed: { title: 'Chảy máu nghiêm trọng', source: 'bleed', critical: true, steps: [
+    st('Ép trực tiếp lên vết thương', 'Gọi 115 hoặc nhờ người khác gọi. Dùng gạc hoặc vải sạch, ép mạnh liên tục lên vết thương. Nếu vật đang cắm trong vết thương, không rút; ép xung quanh vật. Dùng găng nếu có.', { visual: 'bleed', continuous: true }),
+    st('Giữ áp lực cho tới khi được tiếp nhận', 'Không nhấc gạc ra để kiểm tra liên tục. Nếu máu vẫn chảy nhiều, làm theo hướng dẫn tổng đài về biện pháp cầm máu bổ sung. Theo dõi ý thức và thở.', { continuous: true }),
+  ]},
+  stroke: { title: 'Dấu hiệu nghi đột quỵ', source: 'stroke', critical: true, steps: [
+    st('Gọi 115 ngay', 'Méo miệng, yếu một bên tay hoặc nói khó đột ngột là dấu hiệu cảnh báo. Không đợi triệu chứng tự hết.', { visual: 'alert' }),
+    st('Ghi thời điểm khởi phát', 'Ghi thời điểm bắt đầu triệu chứng hoặc lần cuối còn bình thường. Không cho ăn, uống hay tự dùng thuốc. Theo dõi hosts absorbed.', { note: true, continuous: true }),
+  ]},
+  seizure: { title: 'Co giật', source: 'seizure', critical: true, steps: [
+    st('Bảo vệ khỏi chấn thương', 'Dọn vật nguy hiểm, kê mềm dưới đầu nếu có thể. Không ghì giữ, không nhét vật vào miệng. Ghi thời điểm cơn bắt đầu. Gọi 115 nếu cơn đầu tiên, không rõ tiền sử, kéo dài trên 5 phút, tái diễn, có chấn thương, mang thai hoặc khó thở.', { timer: 300, elapsed: true, visual: 'alert', continuous: true, warning: 'Không chờ đủ 5 phút nếu có dấu hiệu nguy hiểm khác. Thời gian tính từ khi cơn bắt đầu, không phải khi mở app.' }),
+    st('Khi cơn đã dừng', 'Kiểm tra hosts absorbed. Nếu còn thở bình thường nhưng chưa tỉnh, đặt nằm nghiêng nếu không nghi chấn thương cột sống. Nếu không thở bình thường, chuyển sang đánh giá khẩn cấp.', { continuous: true }),
+  ]},
+  burn: { title: 'Bỏng nhiệt', source: 'burn', steps: [
+    st('Làm mát vùng bỏng', 'Đưa khỏi nguồn nhiệt nếu an toàn. Xả nước mát đang chảy lên vùng bỏng trong 20 phút. Tháo trang sức và quần áo gần vùng bỏng nếu không dính vào da. Giữ phần cơ thể còn lại ấm.', { timer: 1200, visual: 'burn', warning: 'Bỏng rộng, sâu, ở mặt, đường thở, điện hoặc hóa chất cần hỗ trợ y tế khẩn cấp; không chờ hết bộ đếm mới gọi.' }),
+    st('Che phủ và tìm hỗ trợ', 'Che lỏng bằng vật liệu sạch, không dính. Không dùng đá lạnh, kem, dầu hoặc chọc vỡ bóng nước. Đến cơ sở y tế nếu bỏng nghiêm trọng hoặc không rõ mức độ.') ] },
+  poison: { title: 'Nghi ngộ độc', source: 'poison', critical: true, steps: [
+    st('Liên hệ cấp cứu', 'Gọi 115 nếu nghi ngộ độc nguy hiểm hoặc không rõ chất. Không tự tiếp xúc chất độc, không đi vào khu vực có khí độc. Không gây nôn, không tự cho ăn uống hay dùng thuốc giải.', { visual: 'alert' }),
+    st('Chuẩn bị thông tin', 'Nếu an toàn, giữ bao bì hoặc tên chất, lượng ước tính và thời điểm tiếp xúc. Theo dõi ý thức và hosts absorbed. Làm theo hướng dẫn tổng đài.', { note: true, continuous: true }) ] },
+  chest: { title: 'Đau ngực hoặc khó thở đột ngột', source: 'aha', critical: true, steps: [
+    st('Gọi cấp cứu', 'Gọi 115 ngay nếu đau ngực đột ngột, khó thở nghiêm trọng hoặc không rõ nguyên nhân. Để nạn nhân nghỉ ở tư thế dễ chịu, hạn chế gắng sức. Không để họ tự lái xe.', { visual: 'alert' }),
+    st('Ở cạnh và theo dõi', 'Ghi thời điểm khởi phát, bệnh nền và thuốc đang dùng nếu nạn nhân trả lời được. Nếu mất ý thức hoặc thở bất thường, đánh giá lại ngay.', { note: true, continuous: true }) ] },
+  choke: { title: 'Nghi hóc dị vật · người còn tỉnh', source: 'choke', critical: true, steps: [
+    st('Đánh giá khả năng ho và nói', 'Nếu vẫn ho mạnh và nói được, khuyến khích tiếp tục ho, theo dõi sát. Nếu không thể nói, ho hiệu quả hoặc thở, gọi 115 ngay và thực hiện kỹ thuật theo hướng dẫn tổng đài phù hợp với độ tuổi, thai kỳ và thể trạng. Không móc họng mù.', { visual: 'alert', continuous: true, warning: 'Trẻ dưới 1 tuổi cần kỹ thuật khác. Nếu bất tỉnh, chuyển đánh giá ngay.' }) ] },
+  unknown: { title: 'Chưa xác định được tình trạng', source: 'basic', critical: true, steps: [
+    st('Tìm hỗ trợ chuyên môn', 'Nếu tình trạng nghiêm trọng, diễn biến bất thường hoặc không thể đánh giá hosts absorbed, gọi 115 ngay. Giữ hiện trường an toàn, ở cạnh nạn nhân và làm theo tổng đài. Không tự cho thuốc.', { visual: 'alert' }),
+    st('Theo dõi và đánh giá lại', 'Ghi thông tin nếu có thể. Không coi việc thiếu dữ liệu là dấu hiệu an toàn. Nếu nạn nhân mất đáp ứng hoặc thở bất thường, đánh giá lại ngay.', { note: true, continuous: true }) ] },
+}
+const tiles = [
+  ['◎', 'Ngất / bất tỉnh', 'Mất đáp ứng', 'uncon'],
+  ['≈', 'Không thở / khó thở', 'Hô hấp', 'chest'],
+  ['◉', 'Chảy máu nhiều', 'Vết thương', 'bleed'],
+  ['♡', 'Đau ngực', 'Tim mạch', 'chest'],
+  ['ϟ', 'Co giật', 'Thần kinh', 'seizure'],
+  ['◐', 'Méo miệng / yếu tay', 'Nghi đột quỵ', 'stroke'],
+  ['◈', 'Hóc dị vật', 'Đường thở', 'choke'],
+  ['♨', 'Bỏng nhiệt', 'Da và mô', 'burn'],
+  ['⚗', 'Nghi ngộ độc', 'Thuốc / hóa chất', 'poison'],
+  ['?', 'Không rõ', 'Tình huống khác', 'unknown'],
+]
+const Q = {
+  scene: { title: 'Hiện trường có an toàn không?', desc: 'Quan sát nhanh: xe cộ, điện, lửa, khí độc, nước sâu hoặc bạo lực. Đừng tự đặt mình vào nguy hiểm.', options: [['An toàn, có thể tiếp cận', 'response'], ['Không an toàn / không chắc', 'unsafe']] },
+  response: { title: 'Nạn nhân có đáp ứng không?', desc: 'Gọi lớn, chạm nhẹ vào vai nếu an toàn. Quan sát xem họ có mở mắt hoặc trả lời không.', options: [['Có, đang đáp ứng', 'breathawake'], ['Không / không chắc', 'breath']] },
+  breath: { title: 'Nạn nhân có thở bình thường không?', desc: 'Gọi 115 ngay nếu không đáp ứng. Quan sát nhanh lồng ngực và nhịp thở, tối đa 10 giây. Thở ngáp không phải thở bình thường.', timer: 10, critical: true, options: [['Có, thở bình thường', 'p:uncon'], ['Không thở / chỉ thở ngáp / không chắc', 'age']] },
+  age: { title: 'Nạn nhân là người lớn đột ngột gục xuống?', desc: 'Không trì hoãn hồi sức để hoàn thành biểu mẫu. Nếu đúng là người lớn không đáp ứng và không thở bình thường, bắt đầu CPR ngay.', critical: true, options: [['Đúng, người lớn', 'p:cpr'], ['Trẻ em / đuối nước / nghi ngạt / không rõ', 'special']] },
+  breathawake: { title: 'Có khó thở nghiêm trọng hoặc chảy máu nhiều không?', desc: 'Nếu có nhiều dấu hiệu, nhờ người khác hỗ trợ và gọi 115 ngay.', options: [['Chảy máu nhiều', 'p:bleed'], ['Khó thở nghiêm trọng', 'p:chest'], ['Hóc, không nói hoặc ho được', 'p:choke'], ['Không thấy / chưa rõ', 'symptom']] },
+  symptom: { title: 'Điều gì đang xảy ra?', desc: 'Chọn triệu chứng dễ quan sát nhất. Không cần biết tên bệnh.', options: tiles.filter(x => x[3] !== 'uncon' && x[1] !== 'Không thở / khó thở').map(x => [x[1], 'p:' + x[3]]).concat([['Vừa ngất hoặc không chắc', 'p:unknown']]) },
 }
 
-const _A = {}
-const _S = { tab: 'home', view: null, node: null, protocol: null, step: 0, session: null, logs: [] }
-const _F = { history: [] }
+/* ---------- state ---------- */
+const app = document.getElementById('app')
+const S = { tab: 'home', view: 'home', node: '', protocol: '', step: 0, session: null, logs: [], voice: false, started: 0, timerStart: 0, timerDuration: 0, metro: null, audio: null, query: '', cat: '', mode: 'base', limit: 30, returnView: null }
+const F = { history: [], zoom: 1, focus: true, lastKey: '', lastTop: 0, lastLeft: 0 }
 
-/* ==================== HELPERS ==================== */
+/* ---------- js helpers ---------- */
+function log(text) { if (!S.session) return; S.logs.push({ time: now(), text }) }
+function speak(text) { if (!S.voice || !('speechSynthesis' in window)) return; try { speechSynthesis.cancel(); let u = new SpeechSynthesisUtterance(text); u.lang = 'vi-VN'; let v = speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith('vi')); if (v) u.voice = v; u.rate = .95; speechSynthesis.speak(u) } catch (e) { } }
+function stopSound() { if ('speechSynthesis' in window) speechSynthesis.cancel(); stopMetro() }
+function stopMetro() { if (S.metro) { clearInterval(S.metro); S.metro = null } document.querySelector('.ring')?.classList.remove('beat') }
+function startMetro() { if (S.metro) { stopMetro(); let b = document.getElementById('metro'); if (b) b.textContent = 'Bật nhịp 110/phút'; return } try { S.audio = S.audio || new (window.AudioContext || window.webkitAudioContext)(); S.audio.resume(); const tick = () => { try { let o = S.audio.createOscillator(), g = S.audio.createGain(); o.frequency.value = 820; g.gain.setValueAtTime(.1, S.audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, S.audio.currentTime + .08); o.connect(g); g.connect(S.audio.destination); o.start(); o.stop(S.audio.currentTime + .09) } catch (e) { } }; tick(); S.metro = setInterval(tick, 60000 / 110); document.querySelector('.ring')?.classList.add('beat'); document.getElementById('metro').textContent = 'Tắt nhịp 110/phút' } catch (e) { alert('Trình duyệt không hỗ trợ âm thanh nhịp.') } }
+function setTimer(n) { S.timerStart = n ? Date.now() : 0; S.timerDuration = n || 0 }
+function updateTimer() { let el = document.getElementById('clock'); if (!el || !S.timerStart) return; let elapsed = Math.floor((Date.now() - S.timerStart) / 1000), remain = Math.max(0, S.timerDuration - elapsed); el.textContent = fmt(el.dataset.elapsed === 'true' ? elapsed : remain); let msg = document.getElementById('timerMsg'); if (msg && remain === 0) msg.textContent = el.dataset.elapsed === 'true' ? 'Đã đạt mốc theo dõi. Nếu cơn còn tiếp diễn, gọi 115.' : 'Đã đến mốc đánh giá lại. Không tự xác nhận thao tác.' }
+setInterval(() => updateTimer(), 250)
 
-function esc(t) {
-  return String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-}
+/* ---------- navigation ---------- */
+function start(hint = '') { stopSound(); S.session = { start: new Date().toISOString(), hint }; S.logs = []; S.started = Date.now(); S.tab = 'home'; log('Bắt đầu đánh giá' + (hint ? ' · ' + hint : '')); question('scene') }
+function question(id) { stopSound(); S.tab = 'home'; S.view = 'question'; S.node = id; setTimer(Q[id]?.timer); render(); speak(Q[id]?.title + '. ' + Q[id]?.desc) }
+function choose(i) { let q = Q[S.node], opt = q?.options[i]; if (!opt) return; log(q.title + ' → ' + opt[0]); let target = opt[1]; if (target.startsWith('p:')) return openProtocol(target.slice(2)); if (target === 'unsafe' || target === 'special') { S.view = target; render(); speak(target === 'unsafe' ? 'Không tiếp cận nếu hiện trường nguy hiểm. Gọi cấp cứu.' : 'Gọi 115 ngay và làm theo hướng dẫn hồi sức của tổng đài.'); return } question(target) }
+function openProtocol(id) { stopSound(); S.protocol = id; S.step = 0; S.view = 'protocol'; S.tab = 'home'; log('Luồng tham khảo: ' + P[id]?.title); enterStep() }
+function enterStep() { stopSound(); let p = P[S.protocol], s = p.steps[S.step]; setTimer(s.timer || (s.metro ? 3600 : 0)); log('Bắt đầu bước ' + (S.step + 1) + ' · ' + s.title); render(); speak(s.title + '. ' + s.text) }
+function next() { let p = P[S.protocol], s = p.steps[S.step]; log('Người dùng xác nhận: ' + s.title); if (S.step < p.steps.length - 1) { S.step++; enterStep() } else { S.view = 'monitor'; stopSound(); render(); speak('Tiếp tục theo dõi và làm theo hướng dẫn tổng đài.') } }
+function changed() { log('Tình trạng thay đổi; đánh giá lại'); question('response') }
+function unable() { log('Không thể thực hiện bước hiện tại'); showModal('Không thể thực hiện', 'Không cố thao tác khi không an toàn hoặc không chắc kỹ thuật. Gọi 115, bật loa ngoài và làm theo hướng dẫn. Nếu tình trạng thay đổi, đánh giá lại ngay.', '<button class="primary" onclick="modal.close();changed()">Đánh giá lại</button>') }
+function go(tab) { stopSound(); S.tab = tab; render(); window.scrollTo(0, 0) }
+function home() { S.view = 'home'; S.tab = 'home'; render() }
+function showModal(title, body, extra = '') { document.getElementById('modal').innerHTML = '<h2>' + esc(title) + '</h2><p>' + esc(body) + '</p><div class="stack">' + extra + '<button onclick="modal.close()">Đóng</button></div>'; document.getElementById('modal').showModal() }
 
-function log(msg) {
-  _S.logs.push({ t: Date.now(), m: msg })
-}
+/* ---------- render ---------- */
+function timerHTML(s) { if (!s) return ''; return `<div class="timer"><div class="ring">${s.metro ? '♥' : '◷'}</div><div><div class="clock">${s.elapsed || s.metro ? '00:00' : fmt(s.timerDuration || 0)}</div><div class="muted">${s.metro ? 'Thời gian thực hiện · không dừng để bấm' : s.elapsed ? 'Thời gian từ lúc mở bước · mốc tham khảo' : 'Thời gian tham khảo'}</div></div></div>` }
+function visual(kind) { if (!kind) return ''; const bg = '<rect x="12" y="12" width="276" height="126" rx="18" fill="#fff0f2"/>'; let content = kind === 'cpr' ? '<circle cx="150" cy="35" r="18" fill="#8eacb4"/><rect x="105" y="56" width="90" height="70" rx="28" fill="#567b87"/><circle cx="150" cy="85" r="22" fill="none" stroke="#65e4c4" stroke-width="3" stroke-dasharray="4 4"/><path d="M150 56v22m-8-8 8 8 8-8" stroke="#65e4c4" stroke-width="4" fill="none"/><path d="M121 91h58" stroke="#dce9e9" stroke-width="13" stroke-linecap="round"/>' : kind === 'burn' ? '<path d="M100 47h90v20h-45v15h-25V67h-20Z" fill="#7296a1"/><path d="M125 86l-5 19m16-19-5 19m16-19-5 19" stroke="#65e4c4" stroke-width="4" stroke-linecap="round"/><path d="M84 118h132" stroke="#bacdd0" stroke-width="15" stroke-linecap="round"/>' : kind === 'bleed' ? '<rect x="48" y="87" width="204" height="27" rx="13" fill="#789aa3"/><rect x="117" y="84" width="67" height="33" rx="7" fill="#e5edf0"/><path d="M150 35v39m-13-13 13 13 13-13" stroke="#65e4c4" stroke-width="6" fill="none" stroke-linecap="round"/>' : kind === 'side' ? '<circle cx="79" cy="77" r="22" fill="#8eacb4"/><path d="M103 85l77 12 48-37m-48 37 48 24" fill="none" stroke="#7195a1" stroke-width="24" stroke-linecap="round"/><path d="M115 74l24 31 26-12" stroke="#a9c5cd" stroke-width="10" fill="none" stroke-linecap="round"/>' : '<circle cx="150" cy="75" r="45" fill="#20433f" stroke="#65e4c4" stroke-width="2"/><path d="M150 46v35m0 14v4" stroke="#65e4c4" stroke-width="8" stroke-linecap="round"/>'; return '<div class="visual" aria-label="Biểu tượng minh họa, không thay thế huấn luyện"><svg viewBox="0 0 300 150" aria-hidden="true">' + bg + content + '</svg></div>' }
+function src(id) { let a = sources[id]; if (!a) return ''; return '<div class="source">Nguồn tham khảo: <a target="_blank" rel="noopener noreferrer" href="' + a[1] + '">' + esc(a[0]) + ' ↗</a></div>' }
+function arrow(pending) { return `<div class="flow-edge ${pending ? 'pending' : ''}" aria-hidden="true"><svg viewBox="0 0 30 45" fill="none"><path d="M15 1V37M8 30L15 38L22 30" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" ${pending ? 'stroke-dasharray="4 4"' : ''}/></svg></div>` }
+function node({ num, state, title = '', answer = '', time = '', content = '', kind = '', critical = false, id = '' }) { return `<article ${id ? 'id="' + id + '"' : ''} class="flow-node ${kind} ${critical ? 'is-critical' : ''}" ${kind === 'active-node' ? 'aria-current="step"' : ''}><div class="node-bar"><span class="node-num">${String(num).padStart(2, '0')}</span><span class="node-state">${esc(state)}</span>${time ? '<time class="node-time">' + esc(time) + '</time>' : ''}</div><div class="node-inner">${title ? '<h3>' + esc(title) + '</h3>' : ''}${answer ? '<div class="' + (kind === 'done-node' ? 'node-answer' : 'muted') + '">' + esc(answer) + '</div>' : ''}${content}</div></article>` }
+function futureCard(num, title, desc) { return node({ num, state: 'Bước dự kiến', title, content: '<p>' + esc(desc) + '</p>', kind: 'future-node' }) }
+function flowHome() { const tilesHtml = tiles.map((t, i) => `<button class="tile" onclick="start(tiles[${i}][1])"><b>${t[0]}</b>${esc(t[1])}</button>`).join(''); return node({ num: 1, state: 'Bắt đầu · Mô phỏng', kind: 'active-node', id: 'active-node', content: `<div class="flow-home"><div class="tag">SowCuu • Flow</div><h2>Bắt đầu đánh giá</h2><p>Chọn tình trạng quan sát được hoặc bắt đầu đánh giá tổng quát.</p><button class="primary" onclick="start()">✚ Bắt đầu đánh giá →</button><div class="tiles">${tilesHtml}</div></div>` }) + arrow(true) + futureCard(2, 'Kiểm tra an toàn hiện trường', 'Câu hỏi đầu tiên của quy trình.') + arrow(true) + futureCard(3, 'Đánh giá tình trạng', 'Các bước tiếp theo phụ thuộc câu trả lời.') }
+function flowActive(oldContent) { const num = 1; const critical = false; const state = 'Câu hỏi hiện tại'; const history = ''; const pending = arrow(true) + futureCard(2, 'Bước tiếp theo', 'Được xác định sau khi bạn chọn câu trả lời.'); return history + node({ num, state, kind: 'active-node', critical, id: 'active-node', content: oldContent }) + pending }
+function library() { return `<section class="panel"><div class="eyebrow">Knowledge base · offline</div><h1>Tra cứu tình huống</h1><p>120 tình huống gốc và 1.200 biến thể QA. Đây là danh mục kỹ thuật, không phải 1.200 phác đồ điều trị.</p><div class="row"><button class="small ${S.mode === 'base' ? 'primary' : ''}" onclick="setMode('base')">120 tình huống</button><button class="small ${S.mode === 'qa' ? 'primary' : ''}" onclick="setMode('qa')">1.200 QA</button></div><label for="query" class="muted">Tìm triệu chứng hoặc mã</label><input id="query" class="search" value="${esc(S.query)}" placeholder="Ví dụ: ngất, đau ngực, CARD-01" oninput="S.query=this.value;S.limit=30;listEntries()"><select id="cat" class="search" aria-label="Nhóm tình huống" onchange="S.cat=this.value;S.limit=30;listEntries()"><option value="">Tất cả 19 nhóm</option></select><div id="results"></div></section>` }
+function setMode(m) { S.mode = m; S.limit = 30; go('library') }
+function listEntries() { let el = document.getElementById('results'); if (!el) return; let q = S.query.toLowerCase(); let items = tiles.filter(x => x[1].toLowerCase().includes(q) || x[3].toLowerCase().includes(q)); el.innerHTML = `<p class="muted">${items.length} kết quả · hiện ${Math.min(S.limit, items.length)}</p>` + items.slice(0, S.limit).map(x => `<button class="entry" onclick="detail('${esc(x.id)}')">${esc(x[1])}<small>${esc(x[0])} · ${esc(x[3])}</small></button>`).join('') }
+function detail(id) { showModal('Chi tiết', 'Mã: ' + esc(id), '<button class="primary" onclick="modal.close()">Đóng</button>') }
+function logs() { return `<section class="panel"><div class="eyebrow">Incident timeline</div><h1>Nhật ký phiên</h1><p>Thông tin chỉ tồn tại trong phiên mở HTML; không gửi đến máy chủ.</p>${S.logs.length ? S.logs.map(l => `<div class="log"><time>${esc(l.time)}</time><p>${esc(l.text)}</p></div>`).join('') : '<p>Chưa có dữ liệu. Bắt đầu đánh giá để tạo nhật ký.</p>'}<div class="stack"><button class="primary" onclick="exportLog()" ${S.logs.length ? '' : 'disabled'}>Xuất báo cáo TXT</button><button onclick="clearLog()" ${S.logs.length ? '' : 'disabled'}>Xóa nhật ký</button></div></section>` }
+function exportLog() { let text = 'SOWCUU – Nhật ký người dùng tự xác nhận\nKhông phải hồ sơ chẩn đoán.\n' + S.logs.map(l => l.time + ' ' + l.text).join('\n'); let url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); let a = document.createElement('a'); a.href = url; a.download = 'sowcuu-nhat-ky.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000) }
+function clearLog() { if (confirm('Xóa nhật ký và kết thúc phiên hiện tại?')) { S.logs = []; S.session = null; S.view = 'home'; render() } }
+function about() { return `<section class="panel"><div class="eyebrow">SowCuu v1.2 · Flow Canvas</div><h1>Thông tin & nguồn</h1><p>Ứng dụng minh họa luồng sơ cứu, không phải thiết bị y tế được cấp phép. Các hướng dẫn mẫu chưa được chuyên gia địa phương thẩm định. Luôn ưu tiên tổng đài cấp cứu và huấn luyện trực tiếp.</p><p>Hoạt động ngoại tuyến với dữ liệu nhúng. Giọng đọc tiếng Việt tùy hệ điều hành, không bảo đảm có giọng offline. Sơ đồ chỉ là biểu tượng minh họa. Không dùng AI để chẩn đoán hay tự chỉ định thuốc.</p>${Object.keys(sources).map(src).join('')}<div class="source"><a href="https://www.gov.uk/foreign-travel-advice/vietnam/getting-help" target="_blank" rel="noopener">Số cấp cứu tại Việt Nam ↗</a></div></section>` }
 
-function capture(_title, _answer, _status) {
-  // placeholder for capture analytics
-}
-
-/* ==================== STATE ==================== */
-
-function useAppState() {
-  const [state, setState] = useState({ ..._S })
-
-  const setS = (updater) => setState((prev) => ({ ...prev, ...updater }))
-
-  return { state, setS }
-}
-
-/* ==================== COMPONENTS ==================== */
-
-function Logo() {
-  return <span className="logo" aria-hidden="true">✚</span>
-}
-
-function Call115() {
-  return (
-    <a className="call" href="tel:115" aria-label="Gọi cấp cứu 115">
-      115
-    </a>
-  )
-}
-
-function HomeTiles() {
-  const tiles = [
-    { label: 'Đau ngực', target: 'chest' },
-    { label: 'Hô hấp khó khăn', target: 'breath_cause' },
-    { label: 'Đột quỵ nghi ngờ', target: 'p:stroke' },
-    { label: 'Máu chảy ồ ạt', target: 'p:bleed' },
-    { label: 'Co giật', target: 'p:seizure' },
-    { label: 'Ngộ độc', target: 'toxin_kind' },
-    { label: 'Bỏng', target: 'burn' },
-    { label: 'Dị ứng', target: 'allergy_obs' },
-  ]
-  return (
-    <div className="flow-home tiles">
-      {tiles.map((t, i) => (
-        <button
-          key={i}
-          className="tile primary"
-          onClick={() => openProtocol(t.target)}
-          aria-label={t.label}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function SymptomCarousel({ onRoute }) {
-  const [slide12, setSlide12] = useState(0)
-  const [selected12, setSelected12] = useState(new Set())
-
-  const chosen12 = useCallback(() => [...selected12].filter((k) => signsIndex12[k]), [selected12])
-  const signLabel12 = (k) => {
-    const x = signsIndex12[k]
-    return x ? `${x.region} · ${x.label}` : k
+function render() {
+  const appEl = document.getElementById('app')
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab))
+  let h = notice
+  if (S.tab === 'library') { appEl.innerHTML = h + library(); return }
+  if (S.tab === 'log') { appEl.innerHTML = h + logs(); return }
+  if (S.tab === 'about') { appEl.innerHTML = h + about(); return }
+  if (S.view === 'home') {
+    h += `<div class="split"><div><section class="panel hero"><div class="eyebrow">Hỗ trợ từng bước</div><h1>Giữ bình tĩnh.<br>Bắt đầu sơ cứu.</h1><p>Không cần biết tên bệnh. Trả lời câu hỏi theo tình trạng bạn quan sát được.</p><button class="primary" onclick="start()">✚ Bắt đầu đánh giá →</button>${S.session ? '<button class="outline small" onclick="resume()">Quay lại phiên đang xử lý</button>' : ''}</section><div class="panel"><div class="tag">Cấp cứu y tế Việt Nam</div><h2>115</h2><p>Gọi cấp cứu khi nạn nhân bất tỉnh, thở bất thường, chảy máu nghiêm trọng hoặc có dấu hiệu nguy hiểm.</p><a class="call" href="tel:115">☎ Gọi 115</a></div></div><div><div class="labelrow"><h3>Chọn tình huống</h3><span>29 nhóm nhanh</span></div><div class="tiles">${tiles.map((t, i) => `<button class="tile" onclick="start(tiles[${i}][1])"><b>${t[0]}</b>${esc(t[1])}<small>${esc(t[2])}</small></button>`).join('')}</div><div class="labelrow"><h3>Thư viện ngoại tuyến</h3></div><button class="entry" onclick="go('library')">1.200 biến thể kiểm thử <small>120 tình huống gốc · 19 nhóm · chưa thẩm định</small></button></div></div>`
+  } else if (S.view === 'question') {
+    let q = Q[S.node]
+    h += `<div class="split"><section class="panel"><div class="tag ${q.critical ? 'critical' : ''}">${q.critical ? 'Đánh giá khẩn cấp' : 'Đánh giá tình trạng'}</div><h1>${esc(q.title)}</h1><p>${esc(q.desc)}</p>${q.critical ? callout : ''}${timerHTML(q)}<div class="stack">${q.options.map((o, i) => `<button class="${i === 0 ? '' : 'outline'}" onclick="choose(${i})">${esc(o[0])} →</button>`).join('')}</div></section><aside><div class="panel"><div class="tag">Trong phiên</div><h3>${esc(S.session?.hint || 'Đánh giá tổng quát')}</h3><p>Chọn theo những gì bạn thật sự quan sát được. Không suy đoán bệnh.</p><button class="outline small" onclick="go('log')">Xem nhật ký</button></div></aside></div>`
+  } else if (S.view === 'protocol') {
+    let p = P[S.protocol], s = p.steps[S.step]
+    h += `<div class="split"><section class="panel"><div class="tag ${p.critical ? 'critical' : ''}">${p.critical ? 'Cần hỗ trợ khẩn cấp' : 'Hướng dẫn tham khảo'}</div><p class="muted">${esc(p.title)} · Bước ${S.step + 1}/${p.steps.length}</p><div class="progress"><i style="width:${(S.step + 1) / p.steps.length * 100}%"></i></div><h2>${esc(s.title)}</h2>${p.critical && S.step === 0 ? callout : ''}<div class="steptext">${esc(s.text)}</div>${s.warning ? '<div class="warning">' + esc(s.warning) + '</div>' : ''}${visual(s.visual)}${timerHTML(s)}${s.metro ? '<button id="metro" class="entry" onclick="startMetro()">Bật nhịp 110/phút</button>' : ''}${s.note ? '<label class="muted" for="note">Thông tin ghi nhận (không bắt buộc)</label><textarea class="search" id="note" rows="2" placeholder="Thời điểm, bệnh nền, thuốc..."></textarea><button class="small" onclick="saveNote()">Lưu thông tin</button>' : ''}</section><section class="panel"><div class="tag">Thao tác tiếp theo</div><div class="stack">${S.protocol === 'cpr' && S.step === 0 ? '<button class="primary" onclick="next()">AED đã đến (nếu có người hỗ trợ)</button>' : s.continuous && S.step === p.steps.length - 1 ? '<p>Tiếp tục thao tác hoặc theo dõi theo hướng dẫn. Không dừng chỉ để xác nhận.</p>' : `<button class="primary" onclick="next()">${s.continuous ? (S.protocol === 'seizure' ? 'Cơn đã dừng' : 'Chuyển bước khi thích hợp') : '✓ Đã thực hiện bước này'}</button>`}<button class="danger" onclick="changed()">⚠ Tình trạng thay đổi</button><button onclick="unable()">Không thể thực hiện</button><button class="outline" onclick="handover()">Bàn giao cho nhân viên y tế</button><button class="outline small" onclick="speakCurrent()">Đọc lại hướng dẫn</button></div>${src(p.source)}</section></div>`
+  } else if (S.view === 'unsafe' || S.view === 'special') {
+    h += `<section class="panel"><div class="tag critical">Khẩn cấp</div><h1>${S.view === 'unsafe' ? 'Không tiếp cận khi nguy hiểm' : 'Cần hồi sức phù hợp tình huống'}</h1><div class="steptext">${S.view === 'unsafe' ? 'Giữ khoảng cách an toàn. Gọi 115 và 112 nếu cần cứu nạn. Không tự vào vùng có điện, lửa, khí độc hoặc nước sâu.' : 'Gọi 115 ngay, bật loa ngoài. Làm theo chỉ dẫn hồi sức của tổng đài, đặc biệt nếu là trẻ em hoặc đuối nước. Không chờ thêm câu hỏi.'}</div><a class="call" href="tel:115">☎ Gọi 115</a><div class="stack"><button onclick="question('scene')">Đánh giá lại hiện trường</button><button onclick="handover()">Bàn giao</button></div></section>`
+  } else if (S.view === 'monitor') {
+    h += `<section class="panel"><div class="tag">Theo dõi liên tục</div><h1>Ở cạnh nạn nhân</h1><p>Hoàn thành bước không đồng nghĩa nạn nhân đã an toàn. Tiếp tục theo dõi ý thức, hosts absorbed và làm theo hướng dẫn nhân viên y tế.</p><div class="stack"><button class="danger" onclick="changed()">Tình trạng thay đổi / đánh giá lại</button><button onclick="handover()">Đã bàn giao cho nhân viên y tế</button></div></section>`
   }
-
-  const toggleSign12 = (k) => {
-    if (!signsIndex12[k]) return
-    const s = new Set(selected12)
-    if (s.has(k)) s.delete(k)
-    else s.add(k)
-    setSelected12(s)
-  }
-
-  const clearSigns12 = () => setSelected12(new Set())
-
-  const selectSlide12 = (i) => {
-    setSlide12(Math.max(0, Math.min(signs12.length - 1, i)))
-  }
-
-  const routes12 = useCallback(() => {
-    const found = new Map()
-    for (const k of chosen12()) {
-      const x = signsIndex12[k]
-      if (x.target && (!found.has(x.target) || found.get(x.target) < x.level)) found.set(x.target, x.level)
-    }
-    return [...found].sort((a, b) => b[1] - a[1])
-  }, [chosen12])
-
-  const routeSigns12 = (target) => {
-    const valid = routes12().find((x) => x[0] === target)
-    if (!valid) return
-    if (valid[1] === 2) {
-      onRoute(target)
-    } else {
-      onRoute(target)
-    }
-  }
-
-  const urgent = routes12().filter((x) => x[1] === 2)
-
-  return (
-    <section className="sym12" aria-label="Biểu hiện thường gặp">
-      <div className="sym12head">
-        <h3>Biểu hiện thường gặp</h3>
-        <span className="sym12count">{selected12.size} đã chọn</span>
-      </div>
-      <div className="sym12nav" role="tablist" aria-label="Vùng cơ thể">
-        {signs12.map((g, i) => (
-          <button
-            key={i}
-            role="tab"
-            aria-selected={i === slide12}
-            onClick={() => selectSlide12(i)}
-            className={i === slide12 ? 'primary' : 'outline'}
-          >
-            {g[0]}
-          </button>
-        ))}
-      </div>
-      <div id="symRoutes12" className="sym12route" aria-live="polite">
-        {urgent.length > 0 ? (
-          <div className="sym12warning" role="alert">
-            Có dấu hiệu nguy hiểm · xử trí ngay, không chờ chọn thêm.
-          </div>
-        ) : null}
-        {routes12()
-          .slice(0, 2)
-          .map(([key, level]) => (
-            <button
-              key={key}
-              className={level === 2 ? 'danger' : 'outline'}
-              onClick={() => routeSigns12(key)}
-            >
-              {labels12[key] || 'Đánh giá thêm'} →
-            </button>
-          ))}
-      </div>
-      <div className="sym12track" id="symTrack12">
-        {signs12.map((g, gi) => (
-          <section key={gi} className="sym12slide" aria-label={g[0]}>
-            <h4>{g[0]} · {g[2].length} biểu hiện</h4>
-            <div className="sym12grid">
-              {g[2].map((x, i) => {
-                const signKey = `${gi}-${i}`
-                const on = selected12.has(signKey)
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    className="sym12chip"
-                    data-sign12={signKey}
-                    aria-pressed={on}
-                    onClick={() => toggleSign12(signKey)}
-                  >
-                    <span aria-hidden="true" className="mark12">
-                      {on ? '✓' : x[2] === 2 ? '!' : '+'}
-                    </span>
-                    <span>{esc(x[0])}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-      <div className="sym12pager">
-        <button id="symPrev12" aria-label="Vùng trước" onClick={() => selectSlide12(slide12 - 1)} disabled={slide12 === 0}>
-          ‹
-        </button>
-        <span id="symPage12">{slide12 + 1} / {signs12.length}</span>
-        <button id="symNext12" aria-label="Vùng kế tiếp" onClick={() => selectSlide12(slide12 + 1)} disabled={slide12 === signs12.length - 1}>
-          ›
-        </button>
-      </div>
-      <div className="sym12selected">
-        <small>Chọn nhiều hoặc bỏ qua · ! nguy hiểm</small>
-        <button className="sym12clear" onClick={clearSigns12}>
-          Bỏ chọn
-        </button>
-      </div>
-      <div className="sym12summary" id="symSelected12">
-        {chosen12().map((k) => <span key={k}>{esc(signLabel12(k))}</span>)}
-      </div>
-    </section>
-  )
+  appEl.innerHTML = h; updateTimer()
 }
+function resume() { if (S.node) question('response'); else question('scene') }
+function speakCurrent() { if (!S.voice) { S.voice = true; document.getElementById('voice').textContent = '🔊' } if (S.view === 'protocol') { let s = P[S.protocol].steps[S.step]; speak(s.title + '. ' + s.text) } else if (S.view === 'question') { let q = Q[S.node]; speak(q.title + '. ' + q.desc) } }
+function saveNote() { let n = document.getElementById('note'); if (n?.value.trim()) { log('Ghi chú: ' + n.value.trim()); n.value = ''; showModal('Đã ghi nhận', 'Thông tin được lưu trong nhật ký phiên hiện tại, trên thiết bị.') } }
+function handover() { showModal('Bàn giao / kết thúc', 'Chỉ xác nhận bàn giao khi nhân viên y tế đã tiếp nhận hoặc tổng đài hướng dẫn kết thúc. Không coi việc kết thúc app là kết thúc sơ cứu.', '<button class="primary" onclick="modal.close();log(\'Người dùng xác nhận đã bàn giao\');stopSound();S.view=\'home\';go(\'log\')">Xác nhận đã bàn giao</button>') }
 
-function QuestionCard({ node, onChoose, onRoute, showSymptomCarousel }) {
-  const q = Q[node]
-  if (!q) return null
-
-  const isCritical = !!q.critical
-
-  return (
-    <div className={`panel question9 ${isCritical ? 'critical' : ''}`}>
-      {q.title && <h3 className="qtitle">{esc(q.title)}</h3>}
-      {q.desc && <p>{esc(q.desc)}</p>}
-      <div className="chips10">
-        {q.options.map(([label, nextId], i) => {
-          const isProtocol = String(nextId).startsWith('p:')
-          return (
-            <button
-              key={i}
-              type="button"
-              className={isProtocol ? 'primary' : 'outline'}
-              onClick={() => {
-                if (isProtocol) {
-                  onRoute(nextId.slice(2))
-                } else {
-                  onChoose(nextId)
-                }
-              }}
-              aria-label={esc(label)}
-            >
-              {esc(label)}
-            </button>
-          )
-        })}
-      </div>
-      {showSymptomCarousel && <SymptomCarousel onRoute={onRoute} />}
-    </div>
-  )
+/* ---------- flow ---------- */
+const renderWithLibrary = render
+render = function () {
+  let prev = document.getElementById('flowViewport')
+  let saved = prev ? { top: prev.scrollTop, left: prev.scrollLeft } : null
+  renderWithLibrary()
+  let isFlow = S.tab === 'home'
+  document.body.classList.toggle('flow-mode', isFlow)
+  if (!isFlow) return
+  let key = S.view === 'question' ? 'q:' + S.node : S.view === 'protocol' ? 'p:' + S.protocol + ':' + S.step : S.view
+  let old = appEl.querySelector('.notice')
+  if (old) old.remove()
+  appEl.querySelectorAll('aside').forEach(a => a.remove())
+  let content = app.innerHTML
+  let nodes = S.view === 'home' ? flowHome() : flowActive(content)
+  appEl.innerHTML = `<div class="notice flow-alert">BẢN MÔ PHỎNG · Chưa thẩm định y khoa · Ca thật: gọi 115 ngay</div><div class="flow-toolbar"><div class="flow-heading"><span class="flow-status-dot"></span>Quy trình sơ cứu<small>${esc(S.session?.hint || 'Canvas tương tác · dọc / ngang')}</small></div><button class="flow-tool" aria-label="Thu nhỏ" onclick="setFlowZoom(F.zoom-.1)">−</button><span id="zoomValue" class="flow-zoom">${Math.round(F.zoom * 100)}%</span><button class="flow-tool" aria-label="Phóng to" onclick="setFlowZoom(F.zoom+.1)">+</button><button class="flow-tool" aria-label="Về card đang thực hiện" title="Về bước hiện tại" onclick="flowCenter()">◎</button><button class="flow-tool" aria-label="Khôi phục kích thước" onclick="fitFlow()">↺</button></div><div class="flow-viewport" id="flowViewport" aria-label="Canvas quy trình có thể cuộn"><div class="flow-world" id="flowWorld" style="zoom:${F.zoom}">${nodes}</div></div>`
+  updateTimer()
+  if (F.focus || F.lastKey !== key || !saved) { F.focus = false; requestAnimationFrame(() => focusFlow()) } else { let v = document.getElementById('flowViewport'); v.scrollTop = saved.top; v.scrollLeft = saved.left }
+  F.lastKey = key
 }
+function focusFlow(behavior = 'auto') { const v = document.getElementById('flowViewport'), n = document.getElementById('active-node'); if (!v || !n) return; let vr = v.getBoundingClientRect(), nr = n.getBoundingClientRect(); let landscape = matchMedia('(orientation:landscape) and (min-width:600px)').matches; v.scrollTo({ left: landscape ? Math.max(0, v.scrollLeft + nr.left - vr.left - 20) : Math.max(0, v.scrollLeft + nr.left - vr.left - (vr.width - nr.width) / 2), top: landscape ? 0 : Math.max(0, v.scrollTop + nr.top - vr.top - 16), behavior }) }
+function setFlowZoom(z) { F.zoom = Math.round(Math.max(.65, Math.min(1.35, z)) * 100) / 100; let w = document.getElementById('flowWorld'); if (w) { w.style.zoom = F.zoom; document.getElementById('zoomValue').textContent = Math.round(F.zoom * 100) + '%'; focusFlow() } }
+function flowCenter() { focusFlow('smooth') }
+function fitFlow() { setFlowZoom(1) }
+window.addEventListener('orientationchange', () => setTimeout(() => focusFlow(), 200))
 
-function ProtocolCard({ protocolId, stepIndex, onNext, onConfirm, showSymptomCarousel }) {
-  const p = P[protocolId]
-  if (!p) return null
-  const step = p.steps[stepIndex]
-  if (!step) return null
-
-  return (
-    <div className="panel assessment11">
-      <span className="tag">{esc(p.title)}</span>
-      <h3>{esc(step.text)}</h3>
-      {step.note && <p className="confirm11">Lưu ý: nhớ ghi lại thời điểm.</p>}
-      {step.warning && <p className="confirm11 warning">{esc(step.warning)}</p>}
-      <div className="chips10">
-        <button
-          type="button"
-          className="primary"
-          onClick={onNext}
-          aria-label="Tiếp tục bước"
-        >
-          {step.continuous ? 'Tiếp tục khi phù hợp' : '✓ Đã thực hiện bước này'}
-        </button>
-        <button type="button" className="outline danger" onClick={onConfirm}>
-          Tình trạng đổi
-        </button>
-      </div>
-      {showSymptomCarousel && <SymptomCarousel onRoute={() => {}} />}
-    </div>
-  )
-}
-
-/* ==================== MAIN APP ==================== */
-
+/* ---------- React component ---------- */
 export default function App() {
-  const { state, setS } = useAppState()
-  const [dialog, setDialog] = useState(null)
-
-  /* Navigation */
-  const go = useCallback((tab) => {
-    setS({ tab, view: null, node: null, protocol: null, step: 0 })
-    setDialog(null)
-  }, [setS])
-
-  const openProtocol = useCallback((id) => {
-    const p = P[id]
-    if (!p) return
-    setS({ tab: 'home', view: 'protocol', protocol: id, step: 0, node: null })
-    capture('Mở phác đồ', p.title, 'Đã chọn')
-  }, [setS])
-
-  const question = useCallback((id) => {
-    const q = Q[id]
-    if (!q) return
-    setS({ tab: 'home', view: 'question', node: id, step: 0, protocol: null })
-  }, [setS])
-
-  const choose = useCallback((nextId) => {
-    const q = Q[state.node]
-    const o = q?.options.find(([, n]) => n === nextId)
-    if (!o) return
-    capture(q.title, o[0], 'Đã trả lời')
-    log(`${q.title} → ${o[0]}`)
-    if (String(nextId).startsWith('p:')) {
-      openProtocol(nextId.slice(2))
-    } else {
-      question(nextId)
+  useEffect(() => {
+    render()
+    const voiceBtn = document.getElementById('voice')
+    if (voiceBtn) voiceBtn.onclick = () => {
+      if (!('speechSynthesis' in window)) { alert('Trình duyệt không hỗ trợ giọng đọc.'); return }
+      S.voice = !S.voice
+      voiceBtn.textContent = S.voice ? '🔊' : '🔇'
+      if (S.voice) speakCurrent(); else speechSynthesis.cancel()
     }
-  }, [state.node, question, openProtocol])
-
-  const nextStep = useCallback(() => {
-    if (!state.protocol || !P[state.protocol]) return
-    const p = P[state.protocol]
-    if (state.step < p.steps.length - 1) {
-      setS({ step: state.step + 1 })
-    }
-  }, [state.protocol, state.step, setS])
-
-  const confirmAction = useCallback(() => {
-    setDialog({ type: 'confirm', title: 'Xác nhận thao tác' })
-  }, [setDialog])
-
-  /* Render view */
-  let content = null
-
-  if (state.tab === 'about') {
-    content = (
-      <section className="panel">
-        <span className="tag">Hồ sơ nguồn · v0.7</span>
-        <h2>Tài liệu Việt Nam</h2>
-        <p>
-          <b>HUCE 2024</b> · QĐ 811/ĐHXD HN, 31/05/2024. Đã đọc mục lục và phần sơ cứu liên quan; đối chiếu phạm vi người dân.
-        </p>
-        <p>
-          <b>Sổ tay cấp cứu 115</b> · chưa truy cập được nội dung do trang yêu cầu xác minh.
-          <a href="https://file.medinet.gov.vn//data/soytehcm/tytphuonganlac/attachments/2026_3/so_tay_cap_cuu_115_53202615.pdf" target="_blank" rel="noopener">
-            Mở nguồn
-          </a>
-        </p>
-        <p>Các bước sơ cứu được diễn đạt lại, đối chiếu hướng dẫn cộng đồng AHA/Red Cross/NHS/CDC. Chưa có bác sĩ thẩm định.</p>
-      </section>
-    )
-  } else if (state.tab === 'library') {
-    content = (
-      <section className="panel">
-        <span className="tag">Tra cứu triệu chứng</span>
-        <h2>Biểu hiện thường gặp</h2>
-        <SymptomCarousel onRoute={(id) => { go('home'); openProtocol(id) }} />
-      </section>
-    )
-  } else if (state.tab === 'log') {
-    content = (
-      <section className="panel">
-        <span className="tag">Nhật ký</span>
-        <h2>Lịch sử thao tác</h2>
-        {state.logs.length === 0 ? (
-          <p>Chưa có thao tác nào được ghi nhận.</p>
-        ) : (
-          <ul className="bullets10">
-            {state.logs.slice(-20).reverse().map((entry, i) => (
-              <li key={i}>{esc(entry.m)}</li>
-            ))}
-          </ul>
-        )}
-      </section>
-    )
-  } else {
-    // home tab - question or protocol view
-    if (state.view === 'question' && state.node) {
-      const showCarousel = ['focused11', 'medical11', 'medical10', 'observed', 'sudden', 'quick_other9', 'context'].includes(state.node)
-      content = (
-        <div className="flow-node active-node has-border-gradient">
-          <div className="node-inner">
-            <div className="node-bar">
-              <span className="node-num">Q</span>
-              <span className="node-state">Câu hỏi</span>
-            </div>
-            <div className="panel">
-              <QuestionCard
-                node={state.node}
-                onChoose={choose}
-                onRoute={(id) => { go('home'); openProtocol(id) }}
-                showSymptomCarousel={showCarousel}
-              />
-            </div>
-          </div>
-        </div>
-      )
-    } else if (state.view === 'protocol' && state.protocol) {
-      content = (
-        <div className="flow-node active-node has-border-gradient critical-pulse">
-          <div className="node-inner">
-            <div className="node-bar">
-              <span className="node-num">P</span>
-              <span className="node-state">Phác đồ xử trí</span>
-            </div>
-            <div className="panel assessment11 has-border-gradient">
-              <ProtocolCard
-                protocolId={state.protocol}
-                stepIndex={state.step}
-                onNext={nextStep}
-                onConfirm={confirmAction}
-                showSymptomCarousel={false}
-              />
-            </div>
-          </div>
-        </div>
-      )
-    } else {
-      content = (
-        <div className="flow-node">
-          <div className="node-inner">
-            <div className="node-bar">
-              <span className="node-num">H</span>
-              <span className="node-state">Trang chủ</span>
-            </div>
-            <div className="panel">
-              <HomeTiles />
-              <SymptomCarousel onRoute={(id) => { go('home'); openProtocol(id) }} />
-            </div>
-          </div>
-        </div>
-      )
-    }
-  }
-
+  }, [])
   return (
     <>
       <header>
-        <Logo />
-        <div className="brand">
-          SowCuu
-          <small>Sơ cứu tại hiện trường • v1.2</small>
-        </div>
-        <button className="small" aria-label="Bật hoặc tắt giọng đọc" onClick={() => {}}>
-          🔇
-        </button>
-        <Call115 />
+        <span className="logo" aria-hidden="true">✚</span>
+        <div className="brand">SowCuu</div>
+        <button className="small" id="voice" aria-label="Bật hoặc tắt giọng đọc">🔇</button>
+        <a className="call" href="tel:115">115</a>
       </header>
-
-      <main id="app">
-        {content}
-      </main>
-
+      <main id="app"></main>
       <nav className="nav" aria-label="Điều hướng">
-        <button data-tab="home" onClick={() => go('home')}>
-          <b>⌂</b> Trang chủ
-        </button>
-        <button data-tab="library" onClick={() => go('library')}>
-          <b>▤</b> Tra cứu
-        </button>
-        <button data-tab="log" onClick={() => go('log')}>
-          <b>◷</b> Nhật ký
-        </button>
-        <button data-tab="about" onClick={() => go('about')}>
-          <b>ⓘ</b> Policy
-        </button>
+        <button data-tab="home" onclick="go('home')">⌂ Trang chủ</button>
+        <button data-tab="library" onclick="go('library')">▤ Tra cứu</button>
+        <button data-tab="log" onclick="go('log')">◷ Nhật ký</button>
+        <button data-tab="about" onclick="go('about')">ⓘ Policy</button>
       </nav>
-
-      <dialog id="modal" className="modal" open={!!dialog} onClose={() => setDialog(null)}>
-        {dialog && (
-          <div className="dialog-content">
-            <button className="close-btn outline" onClick={() => setDialog(null)} aria-label="Đóng">
-              ✕
-            </button>
-            {dialog.title && <h2>{esc(dialog.title)}</h2>}
-            <p>Bạn có chắc muốn xác nhận thao tác này?</p>
-            <div className="chips10">
-              <button className="primary" onClick={() => setDialog(null)}>
-                Xác nhận
-              </button>
-              <button className="outline" onClick={() => setDialog(null)}>
-                Hủy
-              </button>
-            </div>
-          </div>
-        )}
-      </dialog>
-
-      {/* Image viewer (placeholder) */}
-      <div
-        id="viewer8"
-        className="hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Xem hình ảnh lớn"
-      >
-        <div className="v8bar">
-          <strong>Hình ảnh tham khảo</strong>
-          <button className="close-btn" aria-label="Đóng xem ảnh">
-            ✕
-          </button>
-        </div>
-        <div id="v8stage">
-          <img id="v8img" alt="Hình ảnh hướng dẫn" />
-          <div id="v8msg">Không thể tải hình ảnh</div>
-        </div>
-        <div className="v8caption" id="v8caption">Chùm ảnh hướng dẫn thao tác</div>
-        <div className="v8bottom">
-          <span id="v8zoom">100%</span>
-        </div>
-      </div>
+      <dialog id="modal" className="modal"></dialog>
     </>
   )
 }

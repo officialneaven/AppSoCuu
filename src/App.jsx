@@ -193,6 +193,7 @@ Object.assign(window, {
   setMode, listEntries, detail, exportLog, clearLog,
   timerHTML, visual, src, arrow, node, futureCard,
   flowHome, flowActive, library, setFlowZoom, flowCenter, fitFlow, focusFlow,
+  tiles, Q, P, S, F, sources,
 })
 
 export default function App() {
